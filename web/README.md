@@ -15,8 +15,8 @@ npm run dev:web
 ```
 
 Then open http://localhost:5173. Vite forwards every `/api/...` request to the API on port 3000
-(see `vite.config.ts`). The API currently runs on the native `node:http` learning server; the
-Express API will replace it with identical endpoints.
+(see `vite.config.ts`). `dev:api` runs the Express API; `npm run learn:native-server` runs the
+framework-free learning version, which has identical endpoints, so the frontend works with either.
 
 First time only, install the frontend's dependencies:
 

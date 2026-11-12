@@ -8,10 +8,11 @@
     "lint": "eslint .",
     "test": "vitest run",
     "learn:native-server": "tsx src/server/learning/start-native-server.ts",
-    "dev:api": "tsx watch src/server/learning/start-native-server.ts",
+    "dev:api": "tsx watch src/server/start-server.ts",
     "dev:web": "npm --prefix web run dev",
     "test:web": "npm --prefix web test",
-    "build:web": "npm --prefix web run build"
+    "build:web": "npm --prefix web run build",
+    "start:api": "tsx src/server/start-server.ts"
   },
   "keywords": [],
   "author": "",
@@ -19,8 +20,11 @@
   "type": "module",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/express": "^5.0.6",
     "@types/node": "^26.6.4",
+    "@types/supertest": "^7.2.1",
     "eslint": "^10.14.0",
+    "supertest": "^7.3.2",
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.72.1",
@@ -29,6 +33,7 @@
   "dependencies": {
     "@google/genai": "^2.27.0",
     "dotenv": "^18.0.6",
+    "express": "^5.3.0",
     "zod": "^4.6.5"
   }
 }

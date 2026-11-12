@@ -27,9 +27,10 @@ Each entry follows the same shape:
 5. [Milestone 1 — the demo service and record/replay](#5-milestone-1--the-demo-service-and-recordreplay)
 6. [Milestone 2a — a server with no framework](#6-milestone-2a--a-server-with-no-framework)
 7. [Chapter 9 (early) — the React frontend](#7-chapter-9-early--the-react-frontend)
-8. [Decisions log](#8-decisions-log)
-9. [Glossary](#9-glossary)
-10. [Topics to revisit](#10-topics-to-revisit)
+8. [Milestone 2b — the real API in Express 5](#8-milestone-2b--the-real-api-in-express-5)
+9. [Decisions log](#9-decisions-log)
+10. [Glossary](#10-glossary)
+11. [Topics to revisit](#11-topics-to-revisit)
 
 ---
 
@@ -738,7 +739,122 @@ nothing when the answer is already visible.
 
 ---
 
-## 8. Decisions log
+## 8. Milestone 2b — the real API in Express 5
+
+### What
+
+`src/server/` now holds the real API, built with Express 5. It has the **same endpoints, the same
+responses and the same error shape** as the native learning server, which stays in
+`src/server/learning/` for comparison. The frontend switched over with no changes.
+
+```bash
+npm run dev:api
+```
+
+That starts Express. To run the learning server instead:
+
+```bash
+npm run learn:native-server
+```
+
+| File | Job | Native equivalent |
+|---|---|---|
+| `app.ts` | Middleware order: logger → JSON parser → routes → 404 → errors | The request listener |
+| `routes.ts` | One line per endpoint; thin handlers that call the service | `route()` with its `if`s and regex |
+| `http-errors.ts` | `HttpError`, error-handling middleware, 404 handler | The `catch` block |
+| `request-logger.ts` | Logging middleware | `res.on("finish")` at the top |
+| `start-server.ts` | Composition root: build the service, `listen`, graceful shutdown | `start-native-server.ts` |
+
+### Why — and an honest comparison
+
+Code lines (comments and blanks removed): native **134**, Express **124**. That's less of a
+difference than you might expect, and it's worth knowing why:
+
+- **What Express removed:** streams, chunk collection, byte counting, `Content-Length` and
+  `Content-Type` headers, URL parsing, the regex for `:id`, `decodeURIComponent`, and the
+  if-chain router. That's the *plumbing*, and it's where the bugs hide.
+- **What stayed:** deciding that `FEEDBACK_NOT_FOUND` is a 404, writing the Zod schema, choosing a
+  safe error message, choosing what to log. Those are *your application's decisions*, and no
+  framework can make them for you.
+
+The Express version is also easier to extend. Adding an endpoint is one `router.get(...)`, and
+adding rate limiting or security headers is one `app.use(...)`.
+
+### How — Express ideas worth keeping
+
+#### 1. Middleware runs in the order you register it
+
+```ts
+app.use(requestLogger);                     // 1. every request
+app.use(express.json({ limit: "10kb" }));   // 2. parse bodies
+app.use("/api", createApiRouter(service));  // 3. endpoints
+app.use(notFoundHandler);                   // 4. only if nothing matched
+app.use(errorHandler);                      // 5. only if something failed
+```
+
+Each middleware either **sends a response** or **calls `next()`**. If it does neither, the
+request hangs. Put `notFoundHandler` before the router and *every* request becomes a 404.
+
+#### 2. Error-handling middleware has four parameters
+
+```ts
+export const errorHandler: ErrorRequestHandler = (error, req, res, next) => { ... };
+```
+
+Express identifies it **by its parameter count**, so all four must be declared even if unused.
+Errors reach it from `throw` in any handler, `next(error)`, or Express's own JSON parser.
+
+#### 3. Express 5 catches errors from async handlers
+
+```ts
+router.get("/feedback/:id/analysis", async (req, res) => {
+  res.json({ analysis: await service.getFeedbackAnalysis(req.params.id) }); // may throw
+});
+```
+
+In Express 4, a rejected promise here was an unhandled rejection, which crashes the process. Express 5
+forwards it to `errorHandler`. A test (`catches errors thrown by async handlers`) proves it.
+
+#### 4. Route-level middleware
+
+```ts
+router.post("/questions", requireJsonBody, async (req, res) => { ... });
+```
+
+Middleware listed in a route only runs for that route. `express.json()` quietly skips non-JSON
+bodies, so `requireJsonBody` restores the precise 415 response the native server gave.
+
+#### 5. `req.body` is `any`: validate it
+
+`express.json()` parses the body but can't know its shape. Treat it exactly like Gemini's
+output: untrusted until Zod says otherwise.
+
+#### 6. Small security defaults
+
+`app.disable("x-powered-by")` stops Express advertising itself in a response header, which helps
+attackers and nobody else. (Rate limiting and other security headers come with deployment: on
+Lambda, an in-memory rate limiter wouldn't work, because each instance has its own memory.)
+
+#### 7. supertest: testing without a port
+
+```ts
+await request(app).post("/api/questions").send({ question: "..." }).expect(200);
+```
+
+Compare with the native tests' `listen(0)`, port lookup and `close()`. Both test suites check
+the same behaviour, so the two servers are provably interchangeable.
+
+### Remember
+
+> **Frameworks remove plumbing, not decisions.** Status codes, validation and safe messages are
+> still yours.
+> **Middleware order is request order.** Error handler last, 404 just before it.
+> **Four parameters = error middleware.**
+> **`req.body` is untrusted input.** Validate it with Zod.
+
+---
+
+## 9. Decisions log
 
 | Date | Decision | Reason |
 |---|---|---|
@@ -757,11 +873,13 @@ nothing when the answer is already visible.
 | 2026-11-12 | `web/` gets its own `package.json` (changes the earlier "single package" decision) | Browser-only dependencies stay out of the backend's deployment bundle. |
 | 2026-11-12 | No free-text question box in replay mode | It would reject almost everything and imply the demo can do more than it does. |
 | 2026-11-12 | Label responses "example responses" until Milestone 3 | They're hand-written placeholders, not recorded Gemini output. |
+| 2026-11-12 | Express 5 API in `src/server/`; `dev:api` now runs it | Same contract as the native server, so the frontend didn't change. |
+| 2026-11-12 | No in-process rate limiter yet | On Lambda each instance has its own memory, so limits belong at the gateway or CDN. |
 | 2026-11-12 | Planned address: `feedback-analyser.davidcellini.co.uk` | A subdomain keeps the portfolio's existing CloudFront setup untouched. |
 
 ---
 
-## 9. Glossary
+## 10. Glossary
 
 | Term | Plain-English meaning |
 |---|---|
@@ -783,11 +901,14 @@ nothing when the answer is already visible.
 | **CORS** | Browser rules for requests across origins. Not authentication, and not a cost control. |
 | **Dev proxy** | Vite forwarding `/api` to the backend, so the browser sees one origin. |
 | **Race condition** | When the result depends on which of two async operations finishes first. |
+| **Router** | An Express mini-app grouping related routes, mounted at a path such as `/api`. |
+| **Error-handling middleware** | Express middleware with four parameters `(error, req, res, next)`; receives every error. |
+| **supertest** | A library that sends requests to an Express app in tests without you managing a port. |
 | **Per-request state** | Data that belongs to one request and must be created fresh for each one. |
 
 ---
 
-## 10. Topics to revisit
+## 11. Topics to revisit
 
 - How Express's `next()` actually works under the hood (it's a small recursive function).
 - Why a server should validate config at startup rather than at first use ("fail fast").
