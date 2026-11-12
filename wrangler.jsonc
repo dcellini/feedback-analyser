@@ -1,0 +1,39 @@
+// CHAPTER 8 — CLOUDFLARE WORKER CONFIGURATION
+//
+// One Worker serves the whole demo at feedback-analyser.davidcellini.co.uk:
+//
+//   /api/*      → the Express app (src/server/worker.ts)
+//   everything  → the React build (web/dist), served as static assets
+//   else
+//
+// Same origin for both, so the browser never needs CORS.
+// Deployed by Cloudflare Workers Builds on every push to `main`, the same
+// way the portfolio is (see the "Deploy" section of the README).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "feedback-analyser",
+  "main": "src/server/worker.ts",
+
+  // Pins the runtime behaviour. From 2025-08-15, nodejs_compat also
+  // enables the node:http server support Express needs.
+  "compatibility_date": "2026-11-11",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "assets": {
+    "directory": "./web/dist",
+
+    // Requests for /api/* go to the Worker FIRST. Without this, Cloudflare
+    // would look for a static file first and (with SPA handling below)
+    // answer API requests with index.html.
+    "run_worker_first": ["/api/*"],
+
+    // Any other unknown path serves index.html, the usual behaviour for a
+    // single-page React app.
+    "not_found_handling": "single-page-application",
+  },
+
+  // Request logs (console.log) appear in the dashboard under Logs.
+  "observability": {
+    "enabled": true,
+  },
+}

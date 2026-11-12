@@ -1,0 +1,32 @@
+{
+  // CHAPTER 9 — TypeScript settings for the BROWSER app.
+  //
+  // These differ from the backend's tsconfig because the code runs in a
+  // different place:
+  //
+  //   - "lib": DOM      → browser APIs such as document and fetch
+  //   - "bundler"       → Vite resolves imports, so no ".js" extensions
+  //   - "noEmit"        → Vite produces the JavaScript; tsc only checks types
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+
+    // Same strictness as the backend.
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
+  },
+  "include": ["src", "vite.config.ts"]
+}

@@ -1,0 +1,448 @@
+/*
+ * CHAPTER 9 — STYLES
+ *
+ * Plain CSS, no component library: the UI is small, and plain CSS keeps
+ * the bundle tiny and the code easy to read.
+ *
+ * Colours are CSS custom properties ("design tokens") defined once on
+ * :root, then redefined for dark mode. Components only ever use the
+ * tokens, so dark mode needs no component changes.
+ */
+
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --text: #1c1d21;
+  --muted: #5b5f6b;
+  --border: #dedfe3;
+  --accent: #3446d4;
+  --accent-soft: #eaedff;
+
+  --ok: #1d7a46;
+  --ok-soft: #e7f5ec;
+  --warn: #8a5a00;
+  --warn-soft: #fff4dc;
+  --bad: #b42318;
+  --bad-soft: #fdecea;
+
+  --radius: 10px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131417;
+    --surface: #1c1e22;
+    --text: #e9eaee;
+    --muted: #a3a7b3;
+    --border: #33363d;
+    --accent: #8f9cff;
+    --accent-soft: #252a4d;
+
+    --ok: #6fd39a;
+    --ok-soft: #173224;
+    --warn: #f0c26b;
+    --warn-soft: #3a2e14;
+    --bad: #ff8a80;
+    --bad-soft: #3b1d1b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.55 var(--font);
+}
+
+a {
+  color: var(--accent);
+}
+
+/* A visible focus ring for keyboard users, on every interactive element. */
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.875em;
+}
+
+.page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+}
+
+/* ---------- Header and notice ---------- */
+
+.header h1 {
+  margin: 0 0 8px;
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  letter-spacing: -0.02em;
+}
+
+.header__tagline {
+  margin: 0 0 12px;
+  font-size: 1.125rem;
+  color: var(--muted);
+  max-width: 60ch;
+}
+
+.header__link {
+  font-weight: 600;
+}
+
+.notice {
+  margin: 24px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-size: 0.95rem;
+}
+
+/* ---------- Panels ---------- */
+
+.panel {
+  margin: 24px 0;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 1.375rem;
+}
+
+.panel__intro {
+  margin: 0 0 20px;
+  color: var(--muted);
+}
+
+/* ---------- Example questions ---------- */
+
+.examples {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.example {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.example:hover {
+  border-color: var(--accent);
+}
+
+.example[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ---------- Badges ---------- */
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--border);
+  color: var(--text);
+}
+
+/* Sentiment and priority values arrive lower-case ("negative"). */
+.analysis .badge {
+  text-transform: capitalize;
+}
+
+.badge--faulty,
+.badge--priority-medium,
+.badge--neutral {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.badge--positive,
+.badge--priority-low {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.badge--negative,
+.badge--priority-high {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+/* ---------- Answers ---------- */
+
+.answer-region:empty {
+  display: none;
+}
+
+.answer {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+}
+
+.answer--verified {
+  border-left-color: var(--ok);
+}
+
+.answer--insufficient {
+  border-left-color: var(--warn);
+}
+
+.answer--rejected {
+  border-left-color: var(--bad);
+  background: var(--bad-soft);
+}
+
+.answer__heading {
+  margin: 0 0 12px;
+  font-size: 1.125rem;
+}
+
+.answer--verified .answer__heading {
+  color: var(--ok);
+}
+
+.answer--insufficient .answer__heading {
+  color: var(--warn);
+}
+
+.answer--rejected .answer__heading {
+  color: var(--bad);
+}
+
+.answer__summary {
+  font-size: 1.05rem;
+}
+
+.answer h4 {
+  margin: 20px 0 8px;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.answer__note {
+  margin-top: 16px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.claims,
+.numbers {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.claims li,
+.numbers li {
+  margin: 6px 0;
+}
+
+.tick {
+  color: var(--ok);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.sources {
+  white-space: nowrap;
+}
+
+.source-chip {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.quote {
+  margin: 10px 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--border);
+}
+
+.quote blockquote {
+  margin: 0 0 4px;
+  font-style: italic;
+}
+
+.quote figcaption {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.steps {
+  margin-top: 16px;
+  font-size: 0.9rem;
+}
+
+.steps summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+/* ---------- Feedback list ---------- */
+
+.feedback-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-item {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  /* Leave room above when a source link scrolls to this item. */
+  scroll-margin-top: 16px;
+}
+
+/* Highlights the comment a source link (href="#fb-003") points to. */
+.feedback-item:target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.feedback-item__id {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.feedback-item__text {
+  margin: 4px 0 12px;
+}
+
+.analysis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.analysis dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.analysis dd {
+  margin: 0;
+}
+
+.analysis__wide {
+  grid-column: 1 / -1;
+}
+
+.themes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.themes li {
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+/* ---------- Buttons, errors, footer ---------- */
+
+.button-secondary {
+  padding: 6px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button-secondary:hover {
+  background: var(--accent-soft);
+}
+
+.error {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+.error p {
+  margin: 0 0 8px;
+}
+
+.footer {
+  margin-top: 40px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.footer h2 {
+  font-size: 1.125rem;
+  color: var(--text);
+}
+
+/* Respect users who ask their system for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (max-width: 480px) {
+  .panel {
+    padding: 16px;
+  }
+}

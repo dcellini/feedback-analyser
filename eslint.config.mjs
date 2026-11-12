@@ -15,7 +15,8 @@ import tseslint from "typescript-eslint";
  */
 export default tseslint.config(
   {
-    ignores: ["node_modules/**", "dist/**", "coverage/**"],
+    // CHAPTER 9: web/ is a separate package with its own tooling.
+    ignores: ["node_modules/**", "dist/**", "coverage/**", "web/**", ".wrangler/**"],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -25,6 +26,12 @@ export default tseslint.config(
         "error",
         {
           argsIgnorePattern: "^_",
+          /*
+           * CHAPTER 8: allow `const { removed, ...rest } = obj` when only
+           * `rest` is used. This is the standard way to copy an object
+           * without one key, so the "unused" variable is intentional.
+           */
+          ignoreRestSiblings: true,
         },
       ],
     },

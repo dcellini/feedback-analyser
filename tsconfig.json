@@ -38,5 +38,7 @@
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
-  }
+  },
+  // CHAPTER 9: the React app in web/ has its own tsconfig (browser settings).
+  "exclude": ["node_modules", "web"]
 }

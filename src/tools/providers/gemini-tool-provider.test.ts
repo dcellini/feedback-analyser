@@ -95,6 +95,9 @@ const createGeminiResponse = (
 const getRequestBody = (
   fetchMock: ReturnType<typeof vi.fn>,
   callIndex: number,
+  // CHAPTER 8: allowed on purpose. The parsed request body is explored
+  // freely in assertions, so typing every nested field adds nothing here.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Record<string, any> => {
   const request = fetchMock.mock.calls[callIndex]?.[1];
 

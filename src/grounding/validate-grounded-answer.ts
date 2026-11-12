@@ -3,6 +3,9 @@ import { type FeedbackEvidence, verifyFeedbackQuote } from "./internal/verify-fe
 import { verifyGroundedClaim } from "./internal/verify-grounded-claim.js";
 import { verifyNumericalClaim } from "./internal/verify-numerical-claim.js";
 
+// CHAPTER 8: grounding failures now use a dedicated error class (same message).
+import { GroundingVerificationError } from "./grounding-verification-error.js";
+
 /**
  * CHAPTER 7 — GROUNDED ANSWER VERIFICATION
  *
@@ -91,7 +94,7 @@ export const validateGroundedAnswer = (
     const result = verifyFeedbackQuote(quotation, evidence);
 
     if (!result.valid) {
-      throw new Error(`Grounding verification failed: ${result.reason}`);
+      throw new GroundingVerificationError(result.reason);
     }
   }
 
@@ -109,7 +112,7 @@ export const validateGroundedAnswer = (
     const result = verifyGroundedClaim(claim, evidence);
 
     if (!result.valid) {
-      throw new Error(`Grounding verification failed: ${result.reason}`);
+      throw new GroundingVerificationError(result.reason);
     }
   }
 
@@ -139,7 +142,7 @@ export const validateGroundedAnswer = (
     );
 
     if (!result.valid) {
-      throw new Error(`Grounding verification failed: ${result.reason}`);
+      throw new GroundingVerificationError(result.reason);
     }
   }
 

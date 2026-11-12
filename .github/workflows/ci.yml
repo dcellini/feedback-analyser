@@ -1,0 +1,69 @@
+# CHAPTER 8 — CONTINUOUS INTEGRATION
+#
+# Runs on every pull request and every push to main. It CHECKS the code;
+# it doesn't deploy it. Deployment is done by Cloudflare Workers Builds,
+# exactly as for the portfolio site.
+#
+#   push / PR → this workflow: types, lint, tests, builds  → ✓ or ✗ on GitHub
+#   push to main → Cloudflare Workers Builds → feedback-analyser.davidcellini.co.uk
+#
+# No secrets are needed: nothing here talks to Cloudflare or Gemini.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege: this workflow only needs to read the code.
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the older, now-pointless run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Types, lint, tests and builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Don't send Wrangler usage telemetry from CI.
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      - name: Install (backend and frontend)
+        run: |
+          npm ci
+          npm --prefix web ci
+
+      - name: Backend type check
+        run: npm run typecheck
+
+      - name: Backend lint
+        run: npm run lint
+
+      - name: Backend tests (mocked; no Gemini calls)
+        run: npm test
+
+      - name: Frontend tests
+        run: npm run test:web
+
+      - name: Frontend build (includes its type check)
+        run: npm run build:web
+
+      # Bundles the Worker exactly as Cloudflare would, without uploading
+      # anything, so a broken Worker fails here rather than in production.
+      - name: Worker bundle check
+        run: npm run check:worker

@@ -13,6 +13,9 @@ import { redactPersonalData } from "../privacy/redact-personal-data.js";
 
 import { validateGroundedAnswer } from "../grounding/validate-grounded-answer.js";
 
+// CHAPTER 8: grounding failures now use a dedicated error class (same message).
+import { GroundingVerificationError } from "../grounding/grounding-verification-error.js";
+
 import type { GroundedAnswer } from "../grounding/grounded-answer-schema.js";
 import type { FeedbackEvidence } from "../grounding/internal/verify-feedback-quote.js";
 
@@ -435,7 +438,7 @@ export const answerWithVerifiedTools = async ({
     (evidenceRequirement === "feedback" || evidenceRequirement === "both") &&
     !hasFeedbackEvidence
   ) {
-    throw new Error("Grounding verification failed: required feedback evidence is missing.");
+    throw new GroundingVerificationError("required feedback evidence is missing.");
   }
 
   /**
@@ -451,7 +454,7 @@ export const answerWithVerifiedTools = async ({
     (evidenceRequirement === "statistics" || evidenceRequirement === "both") &&
     !hasStatisticsEvidence
   ) {
-    throw new Error("Grounding verification failed: required statistics evidence is missing.");
+    throw new GroundingVerificationError("required statistics evidence is missing.");
   }
 
   /**
