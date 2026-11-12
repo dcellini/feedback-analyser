@@ -98,6 +98,7 @@ feedback-analyser/
 | [`tools/`](src/tools/README.md) | Tool calling, AI agents and verified workflows |
 | [`grounding/`](src/grounding/README.md) | Checking claims against supporting evidence |
 | [`privacy/`](src/privacy/README.md) | Basic personal-data redaction |
+| [`demo/`](src/demo/README.md) | Chapter 8: replay-mode portfolio demo (synthetic data, no Gemini calls) |
 
 **Each folder has its own README explaining what it does, why it's needed, how it works and which files to explore first.**
 

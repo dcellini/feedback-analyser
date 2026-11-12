@@ -25,6 +25,12 @@ export default tseslint.config(
         "error",
         {
           argsIgnorePattern: "^_",
+          /*
+           * CHAPTER 8: allow `const { removed, ...rest } = obj` when only
+           * `rest` is used. This is the standard way to copy an object
+           * without one key, so the "unused" variable is intentional.
+           */
+          ignoreRestSiblings: true,
         },
       ],
     },

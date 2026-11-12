@@ -24,9 +24,10 @@ Each entry follows the same shape:
 2. [How a Node.js server actually works](#2-how-a-nodejs-server-actually-works)
 3. [Native `node:http` vs Express (vs Fastify)](#3-native-nodehttp-vs-express-vs-fastify)
 4. [The plan for Chapter 8](#4-the-plan-for-chapter-8)
-5. [Decisions log](#5-decisions-log)
-6. [Glossary](#6-glossary)
-7. [Topics to revisit](#7-topics-to-revisit)
+5. [Milestone 1 — the demo service and record/replay](#5-milestone-1--the-demo-service-and-recordreplay)
+6. [Decisions log](#6-decisions-log)
+7. [Glossary](#7-glossary)
+8. [Topics to revisit](#8-topics-to-revisit)
 
 ---
 
@@ -356,20 +357,165 @@ A rate-limited "live" mode can be added later, switched off by default.
 | 3 | One-off script to record real Gemini responses (needs approval first) | A few dozen Gemini calls, once |
 | Later | React frontend → GitHub Actions → AWS design & cost review → deploy | Reviewed before each step |
 
+## 5. Milestone 1 — the demo service and record/replay
+
+### What
+
+We built `src/demo/`: a **service** that runs the public demo using a synthetic dataset and
+**recorded** AI responses, with no Gemini calls. It has no HTTP code yet; Milestone 2 puts an
+API on top of it.
+
+```ts
+const service = await createReplayDemoService();
+
+await service.askQuestion("What do employees say about their managers?");
+// → { outcome: "verified", answer: {...}, toolCalls: [{ name: "searchFeedback", ... }] }
+```
+
+Six example questions cover every state the UI needs to show:
+
+| Example | Outcome |
+|---|---|
+| Workload + count | ✅ answered, with a verified number |
+| Managers | ✅ answered (one source has its email and phone number redacted) |
+| Leadership communication | ✅ answered, with positive and negative evidence |
+| Canteen food | ✅ insufficient evidence (nothing in the data mentions it) |
+| Flexible working | ❌ rejected: **deliberately faulty** recording invents a quote |
+| Comment count | ❌ rejected: **deliberately faulty** recording claims 30 instead of 24 |
+
+### Why record/replay?
+
+A public demo that calls Gemini on every click costs money and can be abused. A demo of
+hard-coded results would be dishonest. Record/replay sits in between:
+
+```
+                     LIVE                       REPLAY
+Gemini's replies     fetched over the network   read from a recording
+Tools                run for real               run for real
+Redaction            runs for real              runs for real
+Zod + grounding      runs for real              runs for real
+```
+
+The trick is that the agent talks to an **interface**, `StructuredToolProvider`, so it can't
+tell a Gemini provider from a replay provider. That's the dependency injection from Chapter 1
+paying off: we changed where the answers come from without touching the agent.
+
+The recordings are hand-written placeholders for now. Milestone 3 records real ones.
+
+### How — five ideas worth understanding
+
+#### 1. Shared read-only state vs per-request state
+
+The server creates the service **once** and every visitor's request uses it. So:
+
+```ts
+// Created ONCE at startup, shared by every request. Safe, because it's never modified.
+const searchFeedback = createSearchFeedbackTool({ feedback: preparedFeedback, embeddingProvider });
+
+async askQuestion(question) {
+  // Created FRESH for every request, because it changes as the conversation runs.
+  const replayProvider = createReplayToolProvider(recording); // tracks its position
+  ...
+}
+```
+
+The test `handles concurrent questions independently` fires three questions with
+`Promise.all`. Their steps interleave on the event loop, exactly like three simultaneous
+visitors, and each still gets the right answer.
+
+We also hand out `structuredClone(response)` instead of the recorded object itself. Otherwise
+one request could modify data that the next request reads.
+
+#### 2. The decorator pattern
+
+We wanted to show visitors which tools the agent called, without changing the well-tested agent.
+A **decorator** wraps an object, keeps the same interface, and adds behaviour:
+
+```ts
+const traced: StructuredToolProvider = {
+  askQuestion: async (q) => record(await inner.askQuestion(q)),
+  submitToolResult: async (r) => record(await inner.submitToolResult(r)),
+};
+```
+
+The agent receives `traced` and has no idea anything changed. `createCachedEmbeddingProvider`
+from Chapter 3 is the same pattern.
+
+#### 3. Custom error classes and `instanceof`
+
+Grounding failures used to be `new Error("Grounding verification failed: ...")`. To react to
+them, you'd have to check the message text, which breaks silently if someone rewords it. We
+added a class:
+
+```ts
+export class GroundingVerificationError extends Error { ... }
+
+if (error instanceof GroundingVerificationError) { /* expected: show the visitor */ }
+```
+
+The message text is identical, so all 158 existing tests still passed unchanged.
+
+#### 4. Expected failures are results; unexpected failures are throws
+
+| Situation | What the service does | Why |
+|---|---|---|
+| AI answer fails grounding | **returns** `{ outcome: "rejected", reason }` | Expected, and showing it is part of the demo |
+| Unknown feedback ID / question | **throws** `DemoServiceError` with a `code` | The caller asked for something that doesn't exist |
+| A recording is broken, or a bug | **re-throws** the original error | Unexpected: should become a generic 500 |
+
+The service never mentions HTTP status codes. It says **what** went wrong
+(`FEEDBACK_NOT_FOUND`); the HTTP layer will decide **how** to report it (404). Keeping that
+separation is what lets the same service run behind Express, Lambda or a test.
+
+#### 5. Fail fast at startup
+
+```ts
+for (const item of data.feedback) {
+  if (data.analyses[item.id] === undefined) {
+    throw new Error(`Demo data is incomplete: no recorded analysis for ${item.id}.`);
+  }
+}
+```
+
+A server that refuses to start with a clear message is much easier to debug than one that
+starts happily and breaks on a visitor's first click.
+
+### TypeScript details used
+
+- **`as const satisfies readonly SearchableFeedback[]`** checks the dataset's shape while
+  keeping the exact IDs, so `type DemoFeedbackId = "fb-001" | ... | "fb-024"`.
+- **`Record<DemoFeedbackId, number[]>`** makes the compiler insist that every comment has an
+  embedding.
+- **`Awaited<ReturnType<StructuredToolProvider["askQuestion"]>>`** derives the response type from
+  the existing interface, instead of copying it.
+- **Discriminated unions:** checking `result.outcome === "verified"` narrows the type so
+  `result.answer` becomes available.
+
+### Remember
+
+> **Only record what's external; run everything else for real.** That keeps a replay demo honest.
+> **Shared read-only data is fine; shared mutable data mixes users up.** Create per-conversation
+> objects per request.
+> **Services describe what went wrong; the HTTP layer decides how to say it.**
+
 ---
 
-## 5. Decisions log
+## 6. Decisions log
 
 | Date | Decision | Reason |
 |---|---|---|
 | 2026-11-12 | Keep Chapters 8–9 notes in this file, separate from `LEARNING.md` | `LEARNING.md` covers AI concepts; this covers backend, frontend and AWS. |
 | 2026-11-12 | Every new source file gets teaching comments (what, why, how) | Matches the style of Chapters 1–7 and the learning goal. |
-| 2026-11-12 | Framework: native `node:http` exercise first, then Express 5 for the real API (pending confirmation) | Learn the mechanics, then the industry standard. |
-| 2026-11-12 | Public demo starts in replay mode (pending confirmation) | £0 running cost; no public endpoint that can spend money. |
+| 2026-11-12 | Framework: native `node:http` exercise first, then Express 5 for the real API | Learn the mechanics, then the industry standard. |
+| 2026-11-12 | Public demo starts in replay mode (confirmed) | £0 running cost; no public endpoint that can spend money. |
+| 2026-11-12 | Single `package.json`; work on the `chapter-8-api` branch | Less setup to learn; you review and merge. |
+| 2026-11-12 | Added `GroundingVerificationError` (same message as before) | The service must tell grounding failures from bugs without matching message text. |
+| 2026-11-12 | Two deliberately faulty recordings, clearly labelled | Shows the validator working; labels keep the demo honest. |
+| 2026-11-12 | ESLint: `ignoreRestSiblings: true` | Allows `const { removed, ...rest } = obj`, a standard way to drop a key. |
 
 ---
 
-## 6. Glossary
+## 7. Glossary
 
 | Term | Plain-English meaning |
 |---|---|
@@ -380,12 +526,19 @@ A rate-limited "live" mode can be added later, switched off by default.
 | **Middleware** | A function that runs before (or around) handlers — for parsing, logging, limits, auth. It responds or calls `next()`. |
 | **Status code** | The number at the start of a response: 2xx success, 4xx the client's fault, 5xx the server's fault. |
 | **Unhandled rejection** | A promise that fails with nothing to catch it. In modern Node this crashes the process. |
+| **Service layer** | Code that does the app's actual work, independent of HTTP. Handlers call it. |
+| **Record/replay** | Save an external system's responses once, then play them back instead of calling it. |
+| **Decorator** | A wrapper with the same interface as the thing it wraps, adding behaviour around each call. |
+| **Fail fast** | Detect broken configuration or data at startup, not when a user hits it. |
+| **Per-request state** | Data that belongs to one request and must be created fresh for each one. |
 
 ---
 
-## 7. Topics to revisit
+## 8. Topics to revisit
 
 - How Express's `next()` actually works under the hood (it's a small recursive function).
 - Why a server should validate config at startup rather than at first use ("fail fast").
+- Native schema-constrained output from Gemini, as a way to reduce structurally invalid answers
+  (it doesn't replace Zod or grounding).
 - How AWS Lambda differs from a long-running Node process (no shared memory between some
   invocations, cold starts) — relevant when we get to deployment.
