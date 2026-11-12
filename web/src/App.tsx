@@ -61,11 +61,21 @@ export const App = () => {
         </a>
       </header>
 
+      {/*
+       * Honest labelling: this version replays hand-written example
+       * responses. Update this notice when Milestone 3 (recorded Gemini
+       * responses) or a live AI mode ships.
+       */}
       <aside className="notice" aria-label="About this demo">
-        <strong>Demo mode.</strong> All 24 comments are invented. The AI responses are{" "}
-        <em>example responses</em>, replayed through the real verification code: the tools,
-        redaction, schema validation and grounding checks all run live. No AI service is called,
-        so there's no cost per visit.
+        <p className="notice__lead">
+          <span className="badge badge--beta">Beta</span> This is version 1 of the demo.{" "}
+          <strong>Coming soon: answers from a real AI model.</strong>
+        </p>
+        <p>
+          All 24 comments are invented. For now, the AI responses are <em>example responses</em>,
+          replayed through the real verification code: the tools, redaction, schema validation and
+          grounding checks all run live. No AI service is called yet, so there's no cost per visit.
+        </p>
       </aside>
 
       <main>

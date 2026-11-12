@@ -91,6 +91,8 @@ describe("App", () => {
     render(<App />);
 
     expect(screen.getByText(/All 24 comments are invented/)).toBeInTheDocument();
+    expect(screen.getByText("Beta")).toBeInTheDocument();
+    expect(screen.getByText(/Coming soon: answers from a real AI model/)).toBeInTheDocument();
     expect(await screen.findByText("My manager listens to me.")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /about their managers/ })).toBeInTheDocument();
   });

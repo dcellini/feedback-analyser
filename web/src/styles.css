@@ -112,6 +112,22 @@ code {
   font-size: 0.95rem;
 }
 
+.notice p {
+  margin: 0;
+}
+
+.notice p + p {
+  margin-top: 6px;
+}
+
+.notice .badge--beta {
+  margin-right: 4px;
+  background: var(--accent);
+  color: var(--surface);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 /* ---------- Panels ---------- */
 
 .panel {
