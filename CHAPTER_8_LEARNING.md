@@ -28,9 +28,10 @@ Each entry follows the same shape:
 6. [Milestone 2a — a server with no framework](#6-milestone-2a--a-server-with-no-framework)
 7. [Chapter 9 (early) — the React frontend](#7-chapter-9-early--the-react-frontend)
 8. [Milestone 2b — the real API in Express 5](#8-milestone-2b--the-real-api-in-express-5)
-9. [Decisions log](#9-decisions-log)
-10. [Glossary](#10-glossary)
-11. [Topics to revisit](#11-topics-to-revisit)
+9. [Costs: what the public demo will cost to run](#9-costs-what-the-public-demo-will-cost-to-run-phase-4-preview)
+10. [Decisions log](#10-decisions-log)
+11. [Glossary](#11-glossary)
+12. [Topics to revisit](#12-topics-to-revisit)
 
 ---
 
@@ -854,7 +855,97 @@ the same behaviour, so the two servers are provably interchangeable.
 
 ---
 
-## 9. Decisions log
+## 9. Costs: what the public demo will cost to run (Phase 4 preview)
+
+Nothing has been created in AWS yet. This is the plan to review **before** anything is.
+Prices are in US dollars (AWS bills in USD), checked in November 2026, and must be re-checked on
+the AWS pricing pages before deploying.
+
+### The proposed setup
+
+```
+Visitor
+  ↓
+feedback-analyser.davidcellini.co.uk  (DNS record + free ACM certificate)
+  ↓
+CloudFront ──── /api/* ────► Lambda (Express app, via a Lambda Function URL)
+     │
+     └── everything else ──► S3 bucket (private) with web/dist
+```
+
+- **S3** stores the frontend's static files (about 240 KB in total).
+- **CloudFront** serves them over HTTPS worldwide, and routes `/api/*` to the backend. One
+  origin, so no CORS.
+- **Lambda** runs the Express app only when a request arrives. No visitors means no cost, unlike
+  an always-on server, which you pay for even when idle.
+- **A Lambda Function URL** gives Lambda an HTTPS address that CloudFront can call, without paying
+  for API Gateway in between.
+
+### Expected monthly cost at portfolio traffic
+
+Say 1,000 visits a month, each making about 10 API requests:
+
+| Service | What we'd use | Free allowance | Expected cost |
+|---|---|---|---|
+| S3 | ~240 KB stored, a few thousand reads | Pennies per GB | ~$0.00 |
+| CloudFront | ~20,000 requests, ~1 GB out | Always free: 1 TB out + 10M requests/month | $0.00 |
+| Lambda | ~10,000 requests, ~50 ms each at 128 MB | Always free: 1M requests + 400,000 GB-seconds/month | $0.00 |
+| ACM certificate | One, for the subdomain | Free for use with CloudFront | $0.00 |
+| CloudWatch Logs | A few MB of request logs | 5 GB ingestion/month | $0.00 (set 14-day retention) |
+| DNS | One record (+ one for certificate validation) | Free at most registrars; Route 53 is $0.50/month per hosted zone | $0.00, or $0.00 extra if the zone already exists |
+| Gemini | Replay mode makes **no** AI calls | n/a | $0.00 |
+| GitHub Actions | Tests on push | Free for public repositories | $0.00 |
+
+**Expected total: $0/month.** Lambda's and CloudFront's allowances above are "always free", so
+they don't expire after 12 months.
+
+### What could cost money, and how much
+
+The main risk in replay mode is someone deliberately flooding the site with requests:
+
+| Requests in a month | Roughly | Main cost |
+|---|---|---|
+| 1 million | $0 | Inside every free allowance |
+| 10 million | ~$2 | Lambda requests over 1M ($0.20 per million) |
+| 100 million | ~$110 | CloudFront requests (~$1 per million beyond 10M) + Lambda |
+
+Ways to limit that:
+
+1. **An AWS Budgets alert** (free) emailing at $1 and $5. It's an alert, **not a spending
+   cap**: AWS has no hard cap.
+2. **Lambda reserved concurrency** (free): limits how many copies of the function run at once,
+   which limits how fast it can be called.
+3. **CloudFront caching** of the `GET` endpoints: their answers never change in replay mode, so
+   most requests never reach Lambda.
+4. **A rate limit per visitor** with AWS WAF: about $5/month for the web ACL plus $1 per rule, unless
+   your account can use CloudFront's $0 flat-rate Free plan, which includes WAF. Optional for replay
+   mode, but **required before any live Gemini mode**.
+
+Your existing portfolio on CloudFront already has the same exposure to a request flood, so this
+doesn't add a new kind of risk.
+
+### Later: a live Gemini mode
+
+Each live question can make up to 5 Gemini calls (4 tool calls plus the final answer). That would
+need a daily cap stored somewhere that all Lambda instances share, plus WAF rate limiting and a
+switch to turn it off. It's a separate decision, for after launch.
+
+### Milestone 3 (recording real Gemini responses)
+
+About 100 Gemini calls, once: 24 analyses, 24 embeddings and a few agent conversations. That's
+likely free on Gemini's free tier. Free-tier prompts may be used by Google to improve its
+products, which is fine here because the data is synthetic. Even at paid rates it would be pennies.
+
+### Remember
+
+> **Pay per request, not per hour:** Lambda + CloudFront + S3 cost nothing when nobody visits.
+> **Budgets alert; they don't cap.** Use limits (concurrency, caching, WAF) to bound the
+> worst case.
+> **Replay mode makes the AI cost zero.** Live mode is a separate decision with its own controls.
+
+---
+
+## 10. Decisions log
 
 | Date | Decision | Reason |
 |---|---|---|
@@ -879,7 +970,7 @@ the same behaviour, so the two servers are provably interchangeable.
 
 ---
 
-## 10. Glossary
+## 11. Glossary
 
 | Term | Plain-English meaning |
 |---|---|
@@ -908,7 +999,7 @@ the same behaviour, so the two servers are provably interchangeable.
 
 ---
 
-## 11. Topics to revisit
+## 12. Topics to revisit
 
 - How Express's `next()` actually works under the hood (it's a small recursive function).
 - Why a server should validate config at startup rather than at first use ("fail fast").
