@@ -26,9 +26,10 @@ Each entry follows the same shape:
 4. [The plan for Chapter 8](#4-the-plan-for-chapter-8)
 5. [Milestone 1 — the demo service and record/replay](#5-milestone-1--the-demo-service-and-recordreplay)
 6. [Milestone 2a — a server with no framework](#6-milestone-2a--a-server-with-no-framework)
-7. [Decisions log](#7-decisions-log)
-8. [Glossary](#8-glossary)
-9. [Topics to revisit](#9-topics-to-revisit)
+7. [Chapter 9 (early) — the React frontend](#7-chapter-9-early--the-react-frontend)
+8. [Decisions log](#8-decisions-log)
+9. [Glossary](#9-glossary)
+10. [Topics to revisit](#10-topics-to-revisit)
 
 ---
 
@@ -625,7 +626,119 @@ deploy could cut off a visitor's request halfway through.
 
 ---
 
-## 7. Decisions log
+## 7. Chapter 9 (early) — the React frontend
+
+### What
+
+`web/` is the demo's UI: React + TypeScript + Vite, with plain CSS. It shows the example questions,
+verified answers with their sources, rejected answers with the validator's reason, and every
+comment with on-demand analysis. Run it with two terminals:
+
+```bash
+npm run dev:api
+```
+
+```bash
+npm run dev:web
+```
+
+Then open http://localhost:5173.
+
+We built the frontend **before** the Express API (Milestone 2b) so there's something to show
+sooner. The Express API will have identical endpoints, so the frontend won't change.
+
+You already know React, so this entry focuses on how the frontend and backend fit together.
+
+### How — the integration ideas worth keeping
+
+#### 1. One origin, everywhere: the dev proxy
+
+The frontend only calls relative URLs: `fetch("/api/feedback")`.
+
+```
+Development:  browser → Vite :5173 ──/api/*──► Node API :3000
+Production:   browser → CloudFront ──/api/*──► backend
+                                   └─ else ──► static files in S3
+```
+
+Because the browser only ever talks to one origin, **CORS never comes up**. If the app called
+`http://localhost:3000` directly, a different port would count as a different origin, and we'd need
+CORS headers on the API. And remember: CORS is a browser rule, not security. It doesn't stop
+curl, scripts or bots.
+
+#### 2. `fetch` doesn't reject on HTTP errors
+
+```ts
+const response = await fetch("/api/feedback/fb-999/analysis");
+response.ok;     // false
+response.status; // 404, yet fetch did NOT throw
+```
+
+`fetch` only rejects when the network fails. Forgetting to check `response.ok` is one of the most
+common frontend bugs. `api/client.ts` handles it in one place and turns every failure into an
+`ApiError` with a `code` and a human-readable `message`.
+
+That works neatly because the API returns **one error shape** for everything (a decision from
+Milestone 2a), so one `ErrorMessage` component handles every error in the UI.
+
+#### 3. Race conditions and cancellation
+
+Click question A, then quickly question B. If A's response arrives last, it overwrites B's
+answer. `useAsyncTask` prevents that: each new run calls `abort()` on the previous request's
+`AbortController`, and an aborted run never updates state.
+
+```ts
+controllerRef.current?.abort();             // cancel the old request
+const controller = new AbortController();
+const data = await task(controller.signal); // fetch(url, { signal })
+if (!controller.signal.aborted) setState({ status: "success", data });
+```
+
+It's the same idea as the backend's per-request state: each conversation's data belongs only to
+that conversation.
+
+#### 4. Sharing types without sharing code
+
+```ts
+import type { QuestionResult } from "../../../src/demo/demo-service";
+```
+
+`import type` is erased at build time, so the frontend gets the backend's exact types with
+**none** of its code in the browser bundle. We checked: the built JavaScript contains no Zod and no
+agent code. If the backend changes a response shape, the frontend's type check fails straight
+away.
+
+#### 5. Production React is just files
+
+`npm run build:web` produces `web/dist/`: one HTML file, one JS file and one CSS file. There's no
+server involved, which is why S3 + CloudFront can host it for pennies (Phase 4).
+
+### Accessibility, built in rather than added later
+
+- `aria-live="polite"` on the answer area: screen readers announce new answers.
+- `role="alert"` on errors and `role="status"` on loading messages.
+- `aria-pressed` on the selected example question.
+- Source links are plain `href="#fb-003"` anchors, highlighted with CSS `:target`, so they work
+  with no JavaScript, from the keyboard, and with screen readers.
+- `<details>` for the collapsible agent steps, which is keyboard accessible by default.
+- A visible `:focus-visible` ring, dark mode via `prefers-color-scheme`, smooth scrolling only if
+  the user hasn't asked for reduced motion.
+
+A screenshot check on an iPhone-sized screen found that the answer appeared below six buttons,
+off screen. The fix scrolls it into view with `scrollIntoView({ block: "nearest" })`, which does
+nothing when the answer is already visible.
+
+### Remember
+
+> **Same origin = no CORS.** Proxy `/api` in development and route it in CloudFront in
+> production.
+> **Check `response.ok`:** `fetch` only throws on network failure.
+> **Cancel stale requests**, or a slow old response can overwrite a new one.
+> **`import type` shares the contract, not the code.**
+
+---
+
+## 8. Decisions log
 
 | Date | Decision | Reason |
 |---|---|---|
@@ -639,10 +752,16 @@ deploy could cut off a visitor's request halfway through.
 | 2026-11-12 | ESLint: `ignoreRestSiblings: true` | Allows `const { removed, ...rest } = obj`, a standard way to drop a key. |
 | 2026-11-12 | One error shape for every endpoint: `{ error: { code, message } }` | The frontend can handle all errors in one place. |
 | 2026-11-12 | A rejected AI answer returns HTTP 200 | The request succeeded; the rejection is a result for the UI to show. |
+| 2026-11-12 | Keep the native server permanently in `src/server/learning/` | You want to compare it with Express later. |
+| 2026-11-12 | Build the frontend before the Express API | Get something visible sooner; the endpoints won't change. |
+| 2026-11-12 | `web/` gets its own `package.json` (changes the earlier "single package" decision) | Browser-only dependencies stay out of the backend's deployment bundle. |
+| 2026-11-12 | No free-text question box in replay mode | It would reject almost everything and imply the demo can do more than it does. |
+| 2026-11-12 | Label responses "example responses" until Milestone 3 | They're hand-written placeholders, not recorded Gemini output. |
+| 2026-11-12 | Planned address: `feedback-analyser.davidcellini.co.uk` | A subdomain keeps the portfolio's existing CloudFront setup untouched. |
 
 ---
 
-## 8. Glossary
+## 9. Glossary
 
 | Term | Plain-English meaning |
 |---|---|
@@ -660,15 +779,19 @@ deploy could cut off a visitor's request halfway through.
 | **Composition root** | The one place (the entry point) where real dependencies are created and wired together. |
 | **Graceful shutdown** | Stop taking new requests, finish current ones, then exit. |
 | **Port 0** | Asks the operating system for any free port. Handy for tests. |
+| **Origin** | Scheme + host + port, e.g. `http://localhost:5173`. A different port is a different origin. |
+| **CORS** | Browser rules for requests across origins. Not authentication, and not a cost control. |
+| **Dev proxy** | Vite forwarding `/api` to the backend, so the browser sees one origin. |
+| **Race condition** | When the result depends on which of two async operations finishes first. |
 | **Per-request state** | Data that belongs to one request and must be created fresh for each one. |
 
 ---
 
-## 9. Topics to revisit
+## 10. Topics to revisit
 
 - How Express's `next()` actually works under the hood (it's a small recursive function).
 - Why a server should validate config at startup rather than at first use ("fail fast").
-- Hosting (Phase 4): a subdomain such as `feedback.davidcellini.co.uk` with its own CloudFront
+- Hosting (Phase 4): the subdomain `feedback-analyser.davidcellini.co.uk` with its own CloudFront
   distribution, plus `/api/*` routed to the API so the browser sees one origin (no CORS).
 - Native schema-constrained output from Gemini, as a way to reduce structurally invalid answers
   (it doesn't replace Zod or grounding).

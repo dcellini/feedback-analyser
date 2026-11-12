@@ -99,6 +99,8 @@ feedback-analyser/
 | [`grounding/`](src/grounding/README.md) | Checking claims against supporting evidence |
 | [`privacy/`](src/privacy/README.md) | Basic personal-data redaction |
 | [`demo/`](src/demo/README.md) | Chapter 8: replay-mode portfolio demo (synthetic data, no Gemini calls) |
+| [`server/learning/`](src/server/learning/native-http-server.ts) | Chapter 8: framework-free HTTP API (learning exercise) |
+| [`web/`](web/README.md) | Chapter 9: React frontend for the demo |
 
 **Each folder has its own README explaining what it does, why it's needed, how it works and which files to explore first.**
 
