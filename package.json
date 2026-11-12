@@ -6,7 +6,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "learn:native-server": "tsx src/server/learning/start-native-server.ts"
   },
   "keywords": [],
   "author": "",

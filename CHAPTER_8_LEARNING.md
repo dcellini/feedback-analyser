@@ -25,9 +25,10 @@ Each entry follows the same shape:
 3. [Native `node:http` vs Express (vs Fastify)](#3-native-nodehttp-vs-express-vs-fastify)
 4. [The plan for Chapter 8](#4-the-plan-for-chapter-8)
 5. [Milestone 1 — the demo service and record/replay](#5-milestone-1--the-demo-service-and-recordreplay)
-6. [Decisions log](#6-decisions-log)
-7. [Glossary](#7-glossary)
-8. [Topics to revisit](#8-topics-to-revisit)
+6. [Milestone 2a — a server with no framework](#6-milestone-2a--a-server-with-no-framework)
+7. [Decisions log](#7-decisions-log)
+8. [Glossary](#8-glossary)
+9. [Topics to revisit](#9-topics-to-revisit)
 
 ---
 
@@ -500,7 +501,131 @@ starts happily and breaks on a visitor's first click.
 
 ---
 
-## 6. Decisions log
+## 6. Milestone 2a — a server with no framework
+
+### What
+
+`src/server/learning/native-http-server.ts` puts the demo service behind a real HTTP API using
+only Node's built-in `node:http`. It's a **learning exercise**: the real API (Milestone 2b) uses
+Express. Run it with:
+
+```bash
+npm run learn:native-server
+```
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/health` | `{ "status": "ok" }` |
+| `GET /api/feedback` | The 24 redacted comments |
+| `GET /api/feedback/:id/analysis` | One comment's analysis, or 404 |
+| `GET /api/questions/examples` | The 6 example questions |
+| `POST /api/questions` `{ "question": "..." }` | The demo service's result |
+
+Every error has the same shape, so the frontend handles them all in one place:
+
+```json
+{ "error": { "code": "BODY_TOO_LARGE", "message": "Request body is too large." } }
+```
+
+### Why do it by hand first?
+
+To see each job a framework does. Here's what it took, and the Express line that replaces it:
+
+| Job | By hand in `node:http` | In Express |
+|---|---|---|
+| Routing | `if (method === "GET" && pathname === "/api/health")` | `app.get("/api/health", ...)` |
+| URL parameters | Regex `/^\/api\/feedback\/([^/]+)\/analysis$/` + `decodeURIComponent` | `"/api/feedback/:id/analysis"` → `req.params.id` |
+| Reading the body | `for await (const chunk of req)`, then `Buffer.concat`, then `JSON.parse` | `express.json()` |
+| Size limit | Check `Content-Length`, **and** count bytes as they arrive | `express.json({ limit: "10kb" })` |
+| JSON-only bodies | Check `Content-Type`, return 415 | `express.json()` skips non-JSON bodies |
+| Sending JSON | `statusCode`, `setHeader` ×2, `end` | `res.status(200).json(body)` |
+| Error handling | One big `try/catch` around every route | Error-handling middleware |
+| Logging | `res.on("finish", ...)` | A logging middleware |
+
+### How — the ideas worth keeping
+
+#### 1. The request body is a stream
+
+The body arrives in **chunks**, at the network's pace. You collect them, then decode:
+
+```ts
+const chunks: Buffer[] = [];
+for await (const chunk of req) chunks.push(chunk);
+const text = Buffer.concat(chunks).toString("utf8"); // join FIRST, then decode
+```
+
+Joining before decoding matters: a two-byte character such as "é" can be split across two
+chunks, and decoding the halves separately would corrupt it.
+
+#### 2. Never trust `Content-Length` alone
+
+We check the header (cheap: refuse before reading anything) **and** count the real bytes,
+because the header is optional and a client can lie. curl tests showed both paths return 413,
+including a chunked upload with no `Content-Length` at all.
+
+#### 3. One uncaught error can take down every user
+
+The request handler is `async`. If it throws and nothing catches it, the promise rejects with no
+handler, and modern Node **crashes the process** on unhandled rejections. That's why the whole
+handler sits inside one `try/catch`, which sorts errors into three groups:
+
+```
+HttpError          → we raised it on purpose; its message is safe to show
+DemoServiceError   → translate the code: FEEDBACK_NOT_FOUND → 404, QUESTION_NOT_AVAILABLE → 422
+anything else      → log details on the server; send a generic 500 to the client
+```
+
+A test throws `new Error("database password is hunter2")` inside the service and checks that the
+response is a generic 500 that doesn't contain "hunter2".
+
+#### 4. Status codes say whose fault it is
+
+| Code | Meaning | Used when |
+|---|---|---|
+| 200 | OK | Success, **including** a "rejected" answer, because the request worked and the result is valid |
+| 400 | Bad Request | Malformed JSON, missing or invalid question |
+| 404 | Not Found | Unknown route or feedback ID |
+| 413 | Content Too Large | Body over 10 KB |
+| 415 | Unsupported Media Type | Body isn't JSON |
+| 422 | Unprocessable Content | Valid request, but not one of the example questions |
+| 500 | Internal Server Error | A bug; details stay in the server logs |
+
+A **rejected answer is a 200**. The HTTP request succeeded; it's the AI's answer that failed
+verification, and that's information for the UI to show, not an error in the request.
+
+#### 5. Create, then start: the composition root
+
+`native-http-server.ts` only **creates** a server from the dependencies it's given.
+`start-native-server.ts` is the **entry point**: it reads `PORT`, builds the real service, and
+calls `listen()`. Tests can then run the server on **port 0**, which asks the operating system
+for any free port, so they never clash with anything else.
+
+#### 6. Graceful shutdown
+
+```ts
+process.on("SIGTERM", () => server.close(() => process.exit(0)));
+```
+
+`close()` stops accepting new connections but lets in-progress requests finish. Hosting
+platforms send `SIGTERM` before stopping a server, and Ctrl+C sends `SIGINT`. Without this, a
+deploy could cut off a visitor's request halfway through.
+
+### Remember
+
+> A framework is **routing + body parsing with limits + middleware + safe error handling**.
+> You've now written each of those by hand.
+> **Catch everything in a request handler**: in Node, one unhandled rejection crashes the server
+> for everyone.
+> **Status codes describe the HTTP request, not the AI's answer.** A rejected answer is still a
+> 200.
+
+---
+
+## 7. Decisions log
 
 | Date | Decision | Reason |
 |---|---|---|
@@ -512,10 +637,12 @@ starts happily and breaks on a visitor's first click.
 | 2026-11-12 | Added `GroundingVerificationError` (same message as before) | The service must tell grounding failures from bugs without matching message text. |
 | 2026-11-12 | Two deliberately faulty recordings, clearly labelled | Shows the validator working; labels keep the demo honest. |
 | 2026-11-12 | ESLint: `ignoreRestSiblings: true` | Allows `const { removed, ...rest } = obj`, a standard way to drop a key. |
+| 2026-11-12 | One error shape for every endpoint: `{ error: { code, message } }` | The frontend can handle all errors in one place. |
+| 2026-11-12 | A rejected AI answer returns HTTP 200 | The request succeeded; the rejection is a result for the UI to show. |
 
 ---
 
-## 7. Glossary
+## 8. Glossary
 
 | Term | Plain-English meaning |
 |---|---|
@@ -530,14 +657,19 @@ starts happily and breaks on a visitor's first click.
 | **Record/replay** | Save an external system's responses once, then play them back instead of calling it. |
 | **Decorator** | A wrapper with the same interface as the thing it wraps, adding behaviour around each call. |
 | **Fail fast** | Detect broken configuration or data at startup, not when a user hits it. |
+| **Composition root** | The one place (the entry point) where real dependencies are created and wired together. |
+| **Graceful shutdown** | Stop taking new requests, finish current ones, then exit. |
+| **Port 0** | Asks the operating system for any free port. Handy for tests. |
 | **Per-request state** | Data that belongs to one request and must be created fresh for each one. |
 
 ---
 
-## 8. Topics to revisit
+## 9. Topics to revisit
 
 - How Express's `next()` actually works under the hood (it's a small recursive function).
 - Why a server should validate config at startup rather than at first use ("fail fast").
+- Hosting (Phase 4): a subdomain such as `feedback.davidcellini.co.uk` with its own CloudFront
+  distribution, plus `/api/*` routed to the API so the browser sees one origin (no CORS).
 - Native schema-constrained output from Gemini, as a way to reduce structurally invalid answers
   (it doesn't replace Zod or grounding).
 - How AWS Lambda differs from a long-running Node process (no shared memory between some
