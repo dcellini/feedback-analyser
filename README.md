@@ -299,6 +299,16 @@ lint, tests, both builds and a dry-run Worker bundle. It holds no Cloudflare cre
 6. **Custom domain:** the Worker → Settings → Domains & Routes → Add → Custom domain →
    `feedback-analyser.davidcellini.co.uk`. Cloudflare creates the DNS record and certificate.
 
+### Troubleshooting the first deploy
+
+- **"WorkerResource.getWorkerResult: response missing default_environment.script"** when
+  clicking Deploy during the import: the dashboard may already have created an empty
+  `feedback-analyser` Worker. Open it from Workers & Pages, go to **Settings → Build →
+  Connect**, and enter the settings above instead of importing again.
+- **Connected, but no build started:** Workers Builds deploys on the next push to `main`, so
+  push a commit (or use **Retry build** if the dashboard offers it).
+- **workers.dev shows "Disabled":** Settings → Domains & Routes → workers.dev → Enable.
+
 ### Costs and limits
 
 On the Workers **Free** plan: static assets are free and unlimited; `/api/*` requests are capped
