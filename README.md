@@ -235,7 +235,86 @@ Scripts using Gemini may make real API requests and consume quota. Mock scripts 
 
 Do not commit API keys or `.env` files containing secrets.
 
-## 7. Learning progress
+### Running the portfolio demo locally
+
+Start the API in one terminal:
+
+```bash
+npm run dev:api
+```
+
+Start the frontend in another, then open http://localhost:5173:
+
+```bash
+npm run dev:web
+```
+
+Or run everything inside Cloudflare's local runtime, exactly as it will be deployed, then open
+http://localhost:8787:
+
+```bash
+npm run dev:worker
+```
+
+First time only, install the frontend's dependencies:
+
+```bash
+npm --prefix web install
+```
+
+## 7. Deploy
+
+The demo runs on **Cloudflare Workers**, deployed the same way as the portfolio site:
+Cloudflare Workers Builds deploys every push to `main`. One Worker serves both halves
+(`wrangler.jsonc`):
+
+```text
+feedback-analyser.davidcellini.co.uk
+  ├─ /api/*  → the Express API (src/server/worker.ts)
+  └─ else    → the React build (web/dist), as static assets
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) only **checks** each push and pull request: types,
+lint, tests, both builds and a dry-run Worker bundle. It holds no Cloudflare credentials.
+
+### One-time setup in the Cloudflare dashboard
+
+1. **Merge to `main`.** Cloudflare deploys the production branch.
+2. **Give Cloudflare access to this repo.** If the Cloudflare GitHub app is limited to selected
+   repositories (as it may be for the portfolio), add `feedback-analyser` to its list in GitHub →
+   Settings → Applications.
+3. **Workers & Pages → Create → Import a repository →** `dcellini/feedback-analyser`.
+4. **Settings:**
+
+   | Setting | Value |
+   |---|---|
+   | Project name | `feedback-analyser` (must match `name` in `wrangler.jsonc`) |
+   | Production branch | `main` |
+   | Build command | `npm run build` |
+   | Deploy command | `npx wrangler deploy` |
+   | Root directory | `/` |
+   | Environment variables | none needed (replay mode) |
+
+5. **Deploy**, then open the `*.workers.dev` URL Cloudflare shows and check `/api/health`.
+6. **Custom domain:** the Worker → Settings → Domains & Routes → Add → Custom domain →
+   `feedback-analyser.davidcellini.co.uk`. Cloudflare creates the DNS record and certificate.
+
+### Costs and limits
+
+On the Workers **Free** plan: static assets are free and unlimited; `/api/*` requests are capped
+at 100,000 a day and 1,000 a minute, and each may use 10 ms of CPU. Past a limit, requests fail
+rather than being charged. Warm requests use about 1 ms; `src/server/warm-up.ts` moves one-off
+"first use" costs to startup. Check the Worker's **Metrics → CPU time** after deploying.
+
+If the account is on the **Workers Paid** plan, usage beyond its allowances is billed instead of
+blocked.
+
+### Taking it down
+
+Delete the Worker in Workers & Pages (this also removes its custom domain), or disconnect the
+repository to stop new deploys.
+
+## 8. Learning progress
 
 ### Completed — Chapters 1–7
 
@@ -279,7 +358,7 @@ Potential features:
 
 These chapters are planned, not yet implemented. Their exact scope will be decided as development continues.
 
-## 8. Engineering principles
+## 9. Engineering principles
 
 Throughout the project, we're practising several important patterns:
 
@@ -293,7 +372,7 @@ Throughout the project, we're practising several important patterns:
 - **Handle failures.** Account for timeouts, rate limits and invalid responses.
 - **Build incrementally.** Extend the working application rather than creating disconnected exercises.
 
-## 9. Project purpose
+## 10. Project purpose
 
 This is a **learning project**, not a production-ready employee feedback platform.
 

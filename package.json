@@ -12,7 +12,10 @@
     "dev:web": "npm --prefix web run dev",
     "test:web": "npm --prefix web test",
     "build:web": "npm --prefix web run build",
-    "start:api": "tsx src/server/start-server.ts"
+    "start:api": "tsx src/server/start-server.ts",
+    "build": "npm --prefix web ci && npm run build:web",
+    "check:worker": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "dev:worker": "npm run build:web && wrangler dev"
   },
   "keywords": [],
   "author": "",
@@ -28,12 +31,14 @@
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.72.1",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "wrangler": "^4.160.1"
   },
   "dependencies": {
     "@google/genai": "^2.27.0",
     "dotenv": "^18.0.6",
     "express": "^5.3.0",
+    "iconv-lite": "^0.7.3",
     "zod": "^4.6.5"
   }
 }

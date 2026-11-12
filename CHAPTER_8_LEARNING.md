@@ -29,9 +29,10 @@ Each entry follows the same shape:
 7. [Chapter 9 (early) — the React frontend](#7-chapter-9-early--the-react-frontend)
 8. [Milestone 2b — the real API in Express 5](#8-milestone-2b--the-real-api-in-express-5)
 9. [Costs: what the public demo will cost to run](#9-costs-what-the-public-demo-will-cost-to-run-phase-4-preview)
-10. [Decisions log](#10-decisions-log)
-11. [Glossary](#11-glossary)
-12. [Topics to revisit](#12-topics-to-revisit)
+10. [Deploying on Cloudflare (instead of AWS, for now)](#10-deploying-on-cloudflare-instead-of-aws-for-now)
+11. [Decisions log](#11-decisions-log)
+12. [Glossary](#12-glossary)
+13. [Topics to revisit](#13-topics-to-revisit)
 
 ---
 
@@ -857,6 +858,9 @@ the same behaviour, so the two servers are provably interchangeable.
 
 ## 9. Costs: what the public demo will cost to run (Phase 4 preview)
 
+> **Update:** we deployed on Cloudflare instead (see section 10). This section is kept because it
+> explains how the AWS option would work if we move later.
+
 Nothing has been created in AWS yet. This is the plan to review **before** anything is.
 Prices are in US dollars (AWS bills in USD), checked in November 2026, and must be re-checked on
 the AWS pricing pages before deploying.
@@ -945,7 +949,108 @@ products, which is fine here because the data is synthetic. Even at paid rates i
 
 ---
 
-## 10. Decisions log
+## 10. Deploying on Cloudflare (instead of AWS, for now)
+
+### What
+
+The demo deploys to **Cloudflare Workers**, the same way the portfolio does: Cloudflare Workers
+Builds deploys every push to `main`. One Worker serves the React build as static files and runs
+the Express API for `/api/*`. AWS remains a possible later step: only one small startup file
+would change.
+
+The AWS cost plan in section 9 still explains how the AWS option would work, but **it's not what
+we deployed**.
+
+### Why Cloudflare
+
+Reading the portfolio repo showed it's on **Cloudflare**, not AWS CloudFront: a
+`wrangler.jsonc` file, and a README saying Cloudflare Workers Builds deploys it. The GitHub
+Actions workflow there only runs checks.
+
+| | Cloudflare Workers (chosen) | AWS (section 9) |
+|---|---|---|
+| Matches the portfolio | Yes | No |
+| Services to set up | 1 Worker | S3, CloudFront, Lambda, ACM, IAM, Budgets |
+| Cost at portfolio traffic | £0 | ~£0 |
+| Worst case | **Requests fail past the free limits; nothing is billed** | Billed per request; budget alerts aren't caps |
+| Main limit | 10 ms CPU per request (free plan) | Generous |
+| AWS learning | None | Lots |
+
+A hard limit on spending is a real advantage for a public portfolio demo.
+
+### How — the ideas worth keeping
+
+#### 1. One app, several entry points
+
+```
+src/server/app.ts                        ← the Express app (knows nothing about hosting)
+src/server/start-server.ts               → app.listen(3000)                  (local)
+src/server/learning/start-native-server.ts → the framework-free version     (learning)
+src/server/worker.ts                     → httpServerHandler({ port })       (Cloudflare)
+```
+
+Each entry point is a small **composition root**. Moving to AWS Lambda later means writing one
+more of these, using a Lambda adapter, without touching the app, the service or the frontend.
+That's the payoff from keeping HTTP out of the service and hosting out of the app.
+
+#### 2. A Worker isn't Node.js
+
+A Worker receives a web-standard `Request` and returns a `Response`. Express expects Node's
+`http` server. The `nodejs_compat` flag provides a compatible `node:http`, and Cloudflare's
+`httpServerHandler` connects the two. The `port` it uses is virtual: nothing listens on the
+network.
+
+#### 3. Routing static files vs the API
+
+```jsonc
+"assets": {
+  "directory": "./web/dist",
+  "run_worker_first": ["/api/*"],                  // API requests go to Express
+  "not_found_handling": "single-page-application"  // other unknown paths → index.html
+}
+```
+
+Without `run_worker_first`, Cloudflare would look for a static file first and, because of the
+single-page-app setting, answer API requests with `index.html`.
+
+#### 4. Measure, don't guess: cold starts and the CPU limit
+
+The free plan allows **10 ms of CPU per request**. Measured on the server side:
+
+| | Without warm-up | With warm-up |
+|---|---|---|
+| First question after startup | ~15–20 ms ❌ | ~2 ms ✅ |
+| Warm question | ~1 ms | ~1 ms |
+| Startup | — | ~13 ms (limited separately) |
+
+Profiling showed the cause: Express's JSON body parser uses `iconv-lite`, whose first decode
+builds its encoding tables (~41 ms), plus Zod's first parse (~2 ms). On a quiet site most visits
+start a fresh instance, so "the first request" is most requests. `warm-up.ts` pays those costs
+at startup instead. AWS Lambda has the same cold-start trade-off.
+
+Measurements were taken in Node; Cloudflare's runtime uses the same V8 engine, but check the
+Worker's **Metrics → CPU time** after deploying to confirm.
+
+#### 5. CI checks; the platform deploys
+
+`.github/workflows/ci.yml` runs types, lint, both test suites, both builds, and
+`wrangler deploy --dry-run`, which bundles the Worker exactly as Cloudflare will without
+uploading anything. It needs **no credentials**: deployment is Cloudflare's job, through its own
+GitHub connection. Fewer secrets in CI means fewer secrets to leak.
+
+Adding CI also meant fixing the last lint error in the repo (a deliberate `any` in a test, now
+marked with an explained exception) and ignoring Wrangler's generated `.wrangler/` folder.
+
+### Remember
+
+> **Keep hosting at the edges.** One small entry file per platform makes moving platforms cheap.
+> **Free-plan hard limits beat budget alerts** for a public demo.
+> **Measure cold starts.** First-use costs can be ten times a warm request; move them to startup.
+> **CI checks, the platform deploys.** No deployment credentials in GitHub.
+
+---
+
+## 11. Decisions log
 
 | Date | Decision | Reason |
 |---|---|---|
@@ -966,11 +1071,14 @@ products, which is fine here because the data is synthetic. Even at paid rates i
 | 2026-11-12 | Label responses "example responses" until Milestone 3 | They're hand-written placeholders, not recorded Gemini output. |
 | 2026-11-12 | Express 5 API in `src/server/`; `dev:api` now runs it | Same contract as the native server, so the frontend didn't change. |
 | 2026-11-12 | No in-process rate limiter yet | On Lambda each instance has its own memory, so limits belong at the gateway or CDN. |
+| 2026-11-12 | Deploy on Cloudflare Workers, like the portfolio; AWS possibly later | Matches the existing setup; free-plan hard limits instead of open-ended billing. |
+| 2026-11-12 | Warm up at Worker startup | Measured first-request CPU (~15–20 ms) exceeded the free plan's 10 ms limit; warm requests use ~1 ms. |
+| 2026-11-12 | CI checks only; Cloudflare deploys | No deployment credentials stored in GitHub. |
 | 2026-11-12 | Planned address: `feedback-analyser.davidcellini.co.uk` | A subdomain keeps the portfolio's existing CloudFront setup untouched. |
 
 ---
 
-## 11. Glossary
+## 12. Glossary
 
 | Term | Plain-English meaning |
 |---|---|
@@ -995,16 +1103,20 @@ products, which is fine here because the data is synthetic. Even at paid rates i
 | **Router** | An Express mini-app grouping related routes, mounted at a path such as `/api`. |
 | **Error-handling middleware** | Express middleware with four parameters `(error, req, res, next)`; receives every error. |
 | **supertest** | A library that sends requests to an Express app in tests without you managing a port. |
+| **Cloudflare Worker** | Code that runs on Cloudflare's network per request; can also serve static files. |
+| **Cold start** | Starting a fresh instance of a serverless function; first-use costs land here. |
+| **Pre-warming** | Doing one-off work at startup so the first real request is fast. |
+| **Dry run** | Doing everything except the final irreversible step (here: bundling without uploading). |
 | **Per-request state** | Data that belongs to one request and must be created fresh for each one. |
 
 ---
 
-## 12. Topics to revisit
+## 13. Topics to revisit
 
 - How Express's `next()` actually works under the hood (it's a small recursive function).
 - Why a server should validate config at startup rather than at first use ("fail fast").
-- Hosting (Phase 4): the subdomain `feedback-analyser.davidcellini.co.uk` with its own CloudFront
-  distribution, plus `/api/*` routed to the API so the browser sees one origin (no CORS).
+- Moving the API to AWS Lambda as a learning exercise: one new entry file using a Lambda adapter
+  (see sections 9 and 10).
 - Native schema-constrained output from Gemini, as a way to reduce structurally invalid answers
   (it doesn't replace Zod or grounding).
 - How AWS Lambda differs from a long-running Node process (no shared memory between some

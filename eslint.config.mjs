@@ -16,7 +16,7 @@ import tseslint from "typescript-eslint";
 export default tseslint.config(
   {
     // CHAPTER 9: web/ is a separate package with its own tooling.
-    ignores: ["node_modules/**", "dist/**", "coverage/**", "web/**"],
+    ignores: ["node_modules/**", "dist/**", "coverage/**", "web/**", ".wrangler/**"],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
